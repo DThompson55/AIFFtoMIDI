@@ -1,0 +1,93 @@
+/**
+ * ReaScript Name: Extract MIDI from an item containing a GarageBand User Generated Loop AIFF file and place into new item
+ * Instructions: 
+ *  - Generate a User defined LOOP in GarageBand and export it as an AIFF file. 
+ *  - Then import the AIFF file as a media item to a track in Reaper. 
+ *  - Select the media item before running this script.
+ *  - Run the script
+ *  - It will generate a new track with a midi item if there was MIDI in the original file.
+ *  - Add a drum FX to the new track. SSD5 seems to match the GarageBand midi mapping pretty well.
+ * 
+ * Author: DThompson55
+ * Author URI: https://www.
+ * Licence: GPL v3
+ * REAPER: 7
+ * Version: 1
+ */
+
+/**
+ * Changelog:
+ * v1 (2024-01-29)
+ */
+
+function getMidi() (
+
+item = GetSelectedMediaItem(0, 0);
+take = GetActiveTake(item);
+takeSrc = GetMediaItemTake_Source(take);
+GetMediaSourceFileName(takeSrc, #filenamebuf);
+
+fpi = fopen(#filenamebuf,"rb");
+(fpi == 0)?(
+	ShowConsoleMsg("No Input File?\nSelect AIFF item before running this script\n");
+):(
+fread(fpi,#formTag,4); // read the FORM tag
+
+(strcmp(#formTag,"FORM") != 0 ) ? (
+	ShowConsoleMsg("Invalid AIFF file. No FORM tag\nMake sure you selected an AIFF item\n");
+):(
+
+fileLen = ((((((fgetc(fpi)<<8)+fgetc(fpi))<<8)+fgetc(fpi))<<8)+fgetc(fpi));
+fread(fpi,#aiffTag,4); // read the AIFF tag
+(strcmp(#aiffTag,"AIFF") != 0 ) ? (
+	ShowConsoleMsg("Invalid AIFF file. No AIFF tag\n");
+):(
+
+sprintf(#msg,"%s %d %s","file length is",fileLen,"\n");
+//ShowConsoleMsg(#msg);
+
+fcoffset = 12;
+fi = 0; // failsafe
+while ((strcmp(#chunkTag,".mid") != 0) && (fcoffset < fileLen) && (fi < 10))
+(
+	fseek(fpi, fcoffset, -1);
+	fread(fpi,#chunkTag,4);          // read a chunk tag
+	chunkLen = ((((((fgetc(fpi)<<8)+fgetc(fpi))<<8)+fgetc(fpi))<<8)+fgetc(fpi));
+
+	sprintf(#msg,"%s %d at %d chunk length %d %s\n",#chunkTag,strcmp(#chunkTag,".mid"),fcoffset,chunkLen);
+	//ShowConsoleMsg(#msg);
+
+	fcoffset += chunkLen+8;
+	fi += 1;
+);
+
+(strcmp(#chunkTag,".mid") == 0)?(
+	strcpy(#fout,#filenamebuf);
+	strcat(#fout,".mid");
+
+
+	fpo = fopen(#fout,"wb");
+	fread(fpi,#buffer,chunkLen);
+	fwrite(fpo,#buffer,chunkLen);
+
+	fflush(fpo);
+	fclose(fpo);
+
+	sprintf(#msg,"%d bytes of midi data written to %s\n",chunkLen,#fout);
+	ShowConsoleMsg(#msg);
+
+	InsertMedia(#fout, 1);
+
+):(
+	ShowConsoleMsg("No MIDI found in file\nMake sure your loop file generated in GarageBand has some drum or other midi component\n");
+);
+
+
+fclose(fpi);
+);
+);
+);
+);
+
+
+getMidi();
